@@ -1,0 +1,33 @@
+{
+  "name": "wplace-firefly",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/potor10/wplace-firefly.git"
+  },
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/potor10/wplace-firefly/issues"
+  },
+  "homepage": "https://github.com/potor10/wplace-firefly#readme",
+  "description": "",
+  "dependencies": {
+    "next": "^15.4.6",
+    "pngjs": "^7.0.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "24.2.1",
+    "@types/react": "^19.1.10",
+    "typescript": "5.9.2"
+  }
+}
