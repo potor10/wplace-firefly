@@ -6,9 +6,6 @@ import { TILE_SIZE, LatLonPixelConverter } from './converter';
 import { getWPlacePng } from './api/wplace';
 
 const PADDING = 10;
-const BIG_PIXEL_SIZE = 6;
-const SMALL_PIXEL_SIZE = 4;
-// BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE / 2 MUST NOT BE DECIMAL
 
 export const converter = new LatLonPixelConverter(TILE_SIZE);
 
@@ -30,104 +27,159 @@ export type Config = {
 }
 
 export type Template = {
-    template: PNG,
-    overlay: Buffer<ArrayBuffer>,
-    tracking: Uint8Array,
-    config: Config
+    templateData: Uint8Array,
+    wplaceData: Uint8Array,
+    width: number,
+    height: number,
+    offsetPx: number,
+    offsetPy: number
 }
 
 export async function getTemplate(): Promise<Template> {
     const templateRes = await fetch('/templates/box/template.png');
-    const template = await decodeToPng(await templateRes.arrayBuffer());
-    const templateTracking = new Uint8Array(template.height * template.width);
+    const templatePng = await decodeToPng(await templateRes.arrayBuffer());
 
     const configRes = await fetch('/templates/box/config.json');
     const config = await configRes.json();
 
-    const minPX = config.tx * TILE_SIZE + config.px - PADDING;
-    const minPY = config.ty * TILE_SIZE + config.py - PADDING;
-    const maxPX = config.tx * TILE_SIZE + config.px + template.width + PADDING;
-    const maxPY = config.ty * TILE_SIZE + config.py + template.height + PADDING;
+    const minPx = config.tx * TILE_SIZE + config.px - PADDING;
+    const minPy = config.ty * TILE_SIZE + config.py - PADDING;
+    const maxPx = config.tx * TILE_SIZE + config.px + templatePng.width + PADDING;
+    const maxPy = config.ty * TILE_SIZE + config.py + templatePng.height + PADDING;
 
-    const pixels = new PNG({
-        width: (maxPX - minPX) * BIG_PIXEL_SIZE,
-        height: (maxPY - minPY) * BIG_PIXEL_SIZE,
+    const width = maxPx - minPx;
+    const height = maxPy - minPy;
+
+    const templateData = new Uint8Array(width * height * 4);
+
+    for (let y = 0; y < templatePng.height; y++) {
+        for (let x = 0; x < templatePng.width; x++) {
+            // Idx of the pixel from the template
+            let templateIdx = (templatePng.width * y + x) << 2;
+
+            // Idx to store on the templateBackground data (PADDING add)
+            let pixelsIdx = (width * (y + PADDING) + (x + PADDING)) << 2;
+            templateData[pixelsIdx] = templatePng.data[templateIdx];
+            templateData[pixelsIdx + 1] = templatePng.data[templateIdx + 1];
+            templateData[pixelsIdx + 2] = templatePng.data[templateIdx + 2];
+            templateData[pixelsIdx + 3] = templatePng.data[templateIdx + 3];
+        }
+    }
+
+    const wplaceData = new Uint8Array(width * height * 4);
+    
+    const [minTx, minTy] = converter.pixelsToTile(minPx, minPy);
+    const [maxTx, maxTy] = converter.pixelsToTile(maxPx, maxPy);
+
+    // Check each tile that could be part of the illustration
+    for (let y = minTy; y <= maxTy; y++) {
+        for (let x = minTx; x <= maxTx; x++) {
+            const wplaceTile = await decodeToPng(await getWPlacePng(x, y));
+            const tileMinPx = (x * TILE_SIZE < minPx) ? minPx : x * TILE_SIZE;
+            const tileMinPy = (y * TILE_SIZE < minPy) ? minPy : y * TILE_SIZE;
+            const tileMaxPx = ((x + 1) * TILE_SIZE > maxPx) ? maxPx :(x + 1) * TILE_SIZE;
+            const tileMaxPy = ((y + 1) * TILE_SIZE > maxPy) ? maxPy : (y + 1) * TILE_SIZE;
+
+            for (let yTile = tileMinPy; yTile < tileMaxPy; yTile++) {
+                for (let xTile = tileMinPx; xTile < tileMaxPx; xTile++) {
+                    // Idx of the pixel from the tile from WPlace
+                    let tileIdx = (wplaceTile.width * (yTile - (y * TILE_SIZE)) + (xTile - (x * TILE_SIZE))) << 2;
+
+                    // Idx to store on the wplaceImage data (PADDING add)
+                    let pixelsIdx = (width * (yTile - minPy) + (xTile - minPx)) << 2;
+                    wplaceData[pixelsIdx] = wplaceTile.data[tileIdx];
+                    wplaceData[pixelsIdx + 1] = wplaceTile.data[tileIdx + 1];
+                    wplaceData[pixelsIdx + 2] = wplaceTile.data[tileIdx + 2];
+                    wplaceData[pixelsIdx + 3] = wplaceTile.data[tileIdx + 3];
+                }
+            }
+        }
+    }
+
+    return { 
+        templateData, 
+        wplaceData,
+        width,
+        height,
+        offsetPx: minPx,
+        offsetPy: minPy
+    };
+}
+
+export type PixelData = {
+    pixelDiff: number[][]
+    totalPixels: number
+}
+
+export function computePixelDiff(template: Template) {
+    let totalPixels = 0;
+    const pixelDiff = [];
+    // Calculate pixel diff (remove padded pixels)
+    for (let y = PADDING; y < template.height - PADDING; y++) {
+        for (let x = PADDING; x < template.width - PADDING; x++) {
+            let templateIdx = (template.width * y + x) << 2;
+
+            // Don't compare alpha channel because of opacity inconsistencies
+            const equal = template.templateData[templateIdx] === template.wplaceData[templateIdx] &&
+                template.templateData[templateIdx + 1] === template.wplaceData[templateIdx + 1] &&
+                template.templateData[templateIdx + 2] === template.wplaceData[templateIdx + 2];
+
+            const empty = template.templateData[templateIdx + 3] === 0;
+
+            if (!empty) {
+                totalPixels++;
+                if (!equal) {
+                    // Store true X, Y and RGBA data
+                    pixelDiff.push([template.offsetPx + x, template.offsetPy + y, [
+                        template.templateData[templateIdx],
+                        template.templateData[templateIdx + 1],
+                        template.templateData[templateIdx + 2],
+                        template.templateData[templateIdx + 3]
+                    ]]);
+                }
+            }
+        }
+    }
+    return { pixelDiff, totalPixels };
+}
+
+const BIG_PIXEL_SIZE = 6;
+const SMALL_PIXEL_SIZE = 3;
+const PIXEL_SPACING = BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE
+
+export function createOverlayImage(template: Template): Buffer {
+    const overlayImage = new PNG({
+        width: template.width * BIG_PIXEL_SIZE,
+        height: template.height * BIG_PIXEL_SIZE,
         colortype: 6
     });
 
-    const [minTX, minTY] = converter.pixelsToTile(minPX, minPY);
-    const [maxTX, maxTY] = converter.pixelsToTile(maxPX, maxPY);
-
-    for (let y = minTY; y <= maxTY; y++) {
-        for (let x = minTX; x <= maxTX; x++) {
-            const wplaceTile = await decodeToPng(await getWPlacePng(x, y));
-            const tileMinPX = (x * TILE_SIZE < minPX) ? minPX : x * TILE_SIZE;
-            const tileMinPY = (y * TILE_SIZE < minPY) ? minPY : y * TILE_SIZE;
-            const tileMaxPX = ((x + 1) * TILE_SIZE > maxPX) ? maxPX :(x + 1) * TILE_SIZE;
-            const tileMaxPY = ((y + 1) * TILE_SIZE > maxPY) ? maxPY : (y + 1) * TILE_SIZE;
-
-            for (let yTile = tileMinPY; yTile < tileMaxPY; yTile++) {
-                for (let xTile = tileMinPX; xTile < tileMaxPX; xTile++) {
-                    let tileIdx = (wplaceTile.width * (yTile - (y * TILE_SIZE)) + (xTile - (x * TILE_SIZE))) << 2;
-                    for (let sizeY = 0; sizeY < BIG_PIXEL_SIZE; sizeY++) {
-                        for (let sizeX = 0; sizeX < BIG_PIXEL_SIZE; sizeX++) {
-                            let pixelsIdx = (pixels.width * ((yTile - minPY) * BIG_PIXEL_SIZE + sizeY) + ((xTile - minPX) * BIG_PIXEL_SIZE + sizeX)) << 2;
-
-                            pixels.data[pixelsIdx] = wplaceTile.data[tileIdx];
-                            pixels.data[pixelsIdx + 1] = wplaceTile.data[tileIdx + 1];
-                            pixels.data[pixelsIdx + 2] = wplaceTile.data[tileIdx + 2];
-                            pixels.data[pixelsIdx + 3] = wplaceTile.data[tileIdx + 3];
-
-                            // TODO: catch discrepancies here and push to array
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-
-    for (let y = 0; y < template.height; y++) {
-        for (let x = 0; x < template.width; x++) {
+    for (let y = 0; y <= template.height; y++) {
+        for (let x = 0; x <= template.width; x++) {
             let templateIdx = (template.width * y + x) << 2;
 
-            let samplePixelsIdx = (pixels.width * ((y + PADDING) * BIG_PIXEL_SIZE) + ((x + PADDING) * BIG_PIXEL_SIZE)) << 2;
-            const correctColor = pixels.data[samplePixelsIdx] === template.data[templateIdx] &&
-                pixels.data[samplePixelsIdx + 1] === template.data[templateIdx + 1] && 
-                pixels.data[samplePixelsIdx + 2] === template.data[templateIdx + 2] &&
-                pixels.data[samplePixelsIdx + 3] === template.data[templateIdx + 3];
-            if (correctColor) {
-                templateTracking[template.width * y + x] = 1;
-            }
+            const empty = template.templateData[templateIdx + 3] === 0;
 
-            let skipY = (BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE) / 2;
             for (let sizeY = 0; sizeY < BIG_PIXEL_SIZE; sizeY++) {
-                skipY++;
-                skipY %= BIG_PIXEL_SIZE;
-                if (skipY <= (BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE)) {
-                    continue;
-                }
-                let skipX = (BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE) / 2;
                 for (let sizeX = 0; sizeX < BIG_PIXEL_SIZE; sizeX++) {
-                    skipX++;
-                    skipX %= BIG_PIXEL_SIZE;
-                    if (skipX <= (BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE)) {
+                    let overlayImageIdx = (overlayImage.width * (y * BIG_PIXEL_SIZE + sizeY) + (x * BIG_PIXEL_SIZE + sizeX)) << 2;
+
+                    if (!empty && sizeX >= PIXEL_SPACING && sizeY >= PIXEL_SPACING) {
+                        overlayImage.data[overlayImageIdx] = template.templateData[templateIdx];
+                        overlayImage.data[overlayImageIdx + 1] = template.templateData[templateIdx + 1];
+                        overlayImage.data[overlayImageIdx + 2] = template.templateData[templateIdx + 2];
+                        overlayImage.data[overlayImageIdx + 3] = template.templateData[templateIdx + 3];
                         continue;
                     }
-                    let pixelsIdx = (pixels.width * ((y + PADDING) * BIG_PIXEL_SIZE + sizeY) + ((x + PADDING) * BIG_PIXEL_SIZE + sizeX)) << 2;
-                    pixels.data[pixelsIdx] = template.data[templateIdx];
-                    pixels.data[pixelsIdx + 1] = template.data[templateIdx + 1];
-                    pixels.data[pixelsIdx + 2] = template.data[templateIdx + 2];
-                    pixels.data[pixelsIdx + 3] = template.data[templateIdx + 3];
+
+                    overlayImage.data[overlayImageIdx] = template.wplaceData[templateIdx];
+                    overlayImage.data[overlayImageIdx + 1] = template.wplaceData[templateIdx + 1];
+                    overlayImage.data[overlayImageIdx + 2] = template.wplaceData[templateIdx + 2];
+                    overlayImage.data[overlayImageIdx + 3] = template.wplaceData[templateIdx + 3];
                 }
             }
         }
     }
 
-    return {
-        template: template,
-        overlay: PNG.sync.write(pixels),
-        tracking: templateTracking,
-        config: config
-    };
+    return PNG.sync.write(overlayImage);
 }

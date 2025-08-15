@@ -27,15 +27,15 @@ export class LatLonPixelConverter {
         return [z, T];
     }
 
-    pixelsToMeters(pX, pY, pixelArtZoom) {
+    pixelsToMeters(px, py, pixelArtZoom) {
         const z = this.resolution(pixelArtZoom);
-        const F = pX * z - WORLD_COEFFICENT;
-        const C = WORLD_COEFFICENT - pY * z;
+        const F = px * z - WORLD_COEFFICENT;
+        const C = WORLD_COEFFICENT - py * z;
         return [F, C];
     }
 
-    pixelsToLatLon(pX, pY, pixelArtZoom) {
-        const [z, F] = this.pixelsToMeters(pX, pY, pixelArtZoom);
+    pixelsToLatLon(px, py, pixelArtZoom) {
+        const [z, F] = this.pixelsToMeters(px, py, pixelArtZoom);
         return this.metersToLatLon(z, F);
     }
 
@@ -51,9 +51,9 @@ export class LatLonPixelConverter {
 
     metersToPixels(l, _, pixelArtZoom) {
         const z = this.resolution(pixelArtZoom);
-        const pX = (l + WORLD_COEFFICENT) / z;
-        const pY = (WORLD_COEFFICENT - _) / z;
-        return [pX, pY];
+        const px = (l + WORLD_COEFFICENT) / z;
+        const py = (WORLD_COEFFICENT - _) / z;
+        return [px, py];
     }
 
     latLonToTile(lat, lon, pixelArtZoom) {
@@ -66,30 +66,30 @@ export class LatLonPixelConverter {
         return this.pixelsToTile(z, F)
     }
 
-    pixelsToTile(pX, pY) {
-        const tX = Math.ceil(pX / this.tileSize) - 1;
-        const tY = Math.ceil(pY / this.tileSize) - 1;
-        return [tX, tY];
+    pixelsToTile(px, py) {
+        const tx = Math.ceil(px / this.tileSize) - 1;
+        const ty = Math.ceil(py / this.tileSize) - 1;
+        return [tx, ty];
     }
 
-    pixelsToTileLocal(pX, pY) {
+    pixelsToTileLocal(px, py) {
         return {
-            tile: this.pixelsToTile(pX, pY),
-            pixel: [Math.floor(pX) % this.tileSize, Math.floor(pY) % this.tileSize]
+            tile: this.pixelsToTile(px, py),
+            pixel: [Math.floor(px) % this.tileSize, Math.floor(py) % this.tileSize]
         };
     }
 
-    tileBounds(tX, tY, pixelArtZoom) {
-        const [minPX, minPY] = this.pixelsToMeters(tX * this.tileSize, tY * this.tileSize, pixelArtZoom);
-        const [maxPX, maxPY] = this.pixelsToMeters((tX + 1) * this.tileSize, (tX + 1) * this.tileSize, pixelArtZoom);
+    tileBounds(tx, ty, pixelArtZoom) {
+        const [minPx, minPy] = this.pixelsToMeters(tx * this.tileSize, ty * this.tileSize, pixelArtZoom);
+        const [maxPx, maxPy] = this.pixelsToMeters((tx + 1) * this.tileSize, (tx + 1) * this.tileSize, pixelArtZoom);
         return {
-            min: [minPX, minPY],
-            max: [maxPX, maxPY]
+            min: [minPx, minPy],
+            max: [maxPx, maxPy]
         };
     }
 
-    tileBoundsLatLon(tX, tY, pixelArtZoom) {
-        const bounds = this.tileBounds(tX, tY, pixelArtZoom);
+    tileBoundsLatLon(tx, ty, pixelArtZoom) {
+        const bounds = this.tileBounds(tx, ty, pixelArtZoom);
         return {
             min: this.metersToLatLon(bounds.min[0], bounds.min[1]),
             max: this.metersToLatLon(bounds.max[0], bounds.max[1])
@@ -102,23 +102,23 @@ export class LatLonPixelConverter {
 
     latLonToTileAndPixel(lat, lon, pixelArtZoom) {
         const [z, F] = this.latLonToMeters(lat, lon);
-        const [tX, tY] = this.metersToTile(z, F, pixelArtZoom);
-        const [pX, pY] = this.metersToPixels(z, F, pixelArtZoom);
+        const [tx, ty] = this.metersToTile(z, F, pixelArtZoom);
+        const [px, py] = this.metersToPixels(z, F, pixelArtZoom);
         return {
-            tile: [tX, tY],
-            pixel: [Math.floor(pX) % this.tileSize, Math.floor(pY) % this.tileSize]
+            tile: [tx, ty],
+            pixel: [Math.floor(px) % this.tileSize, Math.floor(py) % this.tileSize]
         };
     }
 
-    pixelBounds(pX, pY, pixelArtZoom) {
+    pixelBounds(px, py, pixelArtZoom) {
         return {
-            min: this.pixelsToMeters(pX, pY, pixelArtZoom),
-            max: this.pixelsToMeters(pX + 1, pY + 1, pixelArtZoom)
+            min: this.pixelsToMeters(px, py, pixelArtZoom),
+            max: this.pixelsToMeters(px + 1, py + 1, pixelArtZoom)
         };
     }
 
-    pixelToBoundsLatLon(pX, pY, pixelArtZoom) {
-        const bounds = this.pixelBounds(pX, pY, pixelArtZoom);
+    pixelToBoundsLatLon(px, py, pixelArtZoom) {
+        const bounds = this.pixelBounds(px, py, pixelArtZoom);
         const F = .001885;
         
         const C = (bounds.max[0] - bounds.min[0]) * F;
@@ -136,14 +136,14 @@ export class LatLonPixelConverter {
 
     latLonToTileBoundsLatLon(lat, lon, pixelArtZoom) {
         const [z, F] = this.latLonToMeters(lat, lon);
-        const [tX, tY] = this.metersToTile(z, F, pixelArtZoom);
-        return this.tileBoundsLatLon(tX, tY, pixelArtZoom);
+        const [tx, ty] = this.metersToTile(z, F, pixelArtZoom);
+        return this.tileBoundsLatLon(tx, ty, pixelArtZoom);
     }
 
     latLonToPixelBoundsLatLon(lat, lon, pixelArtZoom) {
         const [z, F] = this.latLonToMeters(lat, lon);
-        const [pX, pY] = this.metersToPixels(z, F, pixelArtZoom);
-        return this.pixelToBoundsLatLon(Math.floor(pX), Math.floor(pY), pixelArtZoom);
+        const [px, py] = this.metersToPixels(z, F, pixelArtZoom);
+        return this.pixelToBoundsLatLon(Math.floor(px), Math.floor(py), pixelArtZoom);
     }
 
     // regionSize is On.regionSize (seems to be some config)

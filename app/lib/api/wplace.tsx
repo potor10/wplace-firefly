@@ -1,7 +1,7 @@
 'use server'
 
-export async function getWPlacePng(tX: number, tY: number) {
-    const res = await fetch(`https://backend.wplace.live/files/s0/tiles/${tX}/${tY}.png`, {
+export async function getWPlacePng(tx: number, ty: number) {
+    const res = await fetch(`https://backend.wplace.live/files/s0/tiles/${tx}/${ty}.png`, {
         method: 'GET',
         headers: {
             'Accept': 'image/webp,*/*',
