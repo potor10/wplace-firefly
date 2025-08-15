@@ -19,6 +19,64 @@ async function decodeToPng(buffer: ArrayBuffer): PNG {
     );
 }
 
+const WPLACE_FREE_COLOR_PALETTE_HEX = [
+    '#000000',
+    '#3c3c3c',
+    '#787878',
+    '#d2d2d2',
+    '#ffffff',
+    '#600018',
+    '#ed1c24',
+    '#ff7f27',
+    '#f6aa09',
+    '#f9dd3b',
+    '#fffabc',
+    '#0eb968',
+    '#13e67b',
+    '#87ff5e',
+    '#0c816e',
+    '#10aea6',
+    '#13e1be',
+    '#28509e',
+    '#4093e4',
+    '#60f7f2',
+    '#6b50f6',
+    '#99b1fb',
+    '#780c99',
+    '#aa38b9',
+    '#e09ff9',
+    '#cb007a',
+    '#ec1f80',
+    '#f38da9',
+    '#684634',
+    '#95682a',
+    '#f8b277'
+];
+
+export const WPLACE_FREE_COLOR_PALETTE = WPLACE_FREE_COLOR_PALETTE_HEX.map(hex => {
+    let hexVal = hex.slice(1);
+    return [
+        parseInt(hexVal.substring(0, 2), 16),
+        parseInt(hexVal.substring(2, 4), 16),
+        parseInt(hexVal.substring(4, 6), 16)
+    ]
+});
+
+function clampToFreeColorPalette(r: number, g: number, b: number) {
+    let closest: number;
+    let bestMatch: number[];
+
+    WPLACE_FREE_COLOR_PALETTE.forEach(color => {
+        const currentDistance = Math.sqrt(Math.pow(color[0] - r, 2) + Math.pow(color[1] - g, 2) + Math.pow(color[2] - b, 2));
+        if (closest === undefined || currentDistance < closest) {
+            bestMatch = color;
+            closest = currentDistance;
+        }
+    });
+
+    return bestMatch;
+}
+
 export type Config = {
     px: number,
     py: number,
@@ -59,15 +117,23 @@ export async function getTemplate(): Promise<Template> {
 
             // Idx to store on the templateBackground data (PADDING add)
             let pixelsIdx = (width * (y + PADDING) + (x + PADDING)) << 2;
-            templateData[pixelsIdx] = templatePng.data[templateIdx];
-            templateData[pixelsIdx + 1] = templatePng.data[templateIdx + 1];
-            templateData[pixelsIdx + 2] = templatePng.data[templateIdx + 2];
-            templateData[pixelsIdx + 3] = templatePng.data[templateIdx + 3];
+            
+            const freeColor = clampToFreeColorPalette(
+                templatePng.data[templateIdx], 
+                templatePng.data[templateIdx + 1], 
+                templatePng.data[templateIdx + 2]
+            );
+
+            templateData[pixelsIdx] = freeColor[0];
+            templateData[pixelsIdx + 1] = freeColor[1];
+            templateData[pixelsIdx + 2] = freeColor[2];
+            // 0 or 255
+            templateData[pixelsIdx + 3] = templatePng.data[templateIdx + 3] && 255; 
         }
     }
 
     const wplaceData = new Uint8Array(width * height * 4);
-    
+
     const [minTx, minTy] = converter.pixelsToTile(minPx, minPy);
     const [maxTx, maxTy] = converter.pixelsToTile(maxPx, maxPy);
 
@@ -77,7 +143,7 @@ export async function getTemplate(): Promise<Template> {
             const wplaceTile = await decodeToPng(await getWPlacePng(x, y));
             const tileMinPx = (x * TILE_SIZE < minPx) ? minPx : x * TILE_SIZE;
             const tileMinPy = (y * TILE_SIZE < minPy) ? minPy : y * TILE_SIZE;
-            const tileMaxPx = ((x + 1) * TILE_SIZE > maxPx) ? maxPx :(x + 1) * TILE_SIZE;
+            const tileMaxPx = ((x + 1) * TILE_SIZE > maxPx) ? maxPx : (x + 1) * TILE_SIZE;
             const tileMaxPy = ((y + 1) * TILE_SIZE > maxPy) ? maxPy : (y + 1) * TILE_SIZE;
 
             for (let yTile = tileMinPy; yTile < tileMaxPy; yTile++) {
@@ -96,8 +162,8 @@ export async function getTemplate(): Promise<Template> {
         }
     }
 
-    return { 
-        templateData, 
+    return {
+        templateData,
         wplaceData,
         width,
         height,

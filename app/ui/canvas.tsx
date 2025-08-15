@@ -5,7 +5,8 @@ import { Loader2Icon } from "lucide-react";
 import { 
     IconRefresh,
     IconClick,
-    IconSend
+    IconSend,
+    IconCheck
 } from "@tabler/icons-react";
 import {
     Card,
@@ -19,7 +20,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
-import { Template, getTemplate, computePixelDiff, createOverlayImage, converter } from '../lib/template';
+import { 
+    WPLACE_FREE_COLOR_PALETTE, 
+    Template, 
+    getTemplate, 
+    computePixelDiff, 
+    createOverlayImage, 
+    converter 
+} from '../lib/template';
 
 type PaintTarget = {
     lat: number,
@@ -27,6 +35,29 @@ type PaintTarget = {
     color: number[],
     x: number,
     y: number
+}
+
+function CardColor({ color }: { color: number[] }) {
+    const colorCards = [];
+    WPLACE_FREE_COLOR_PALETTE.forEach(paletteColor => {
+        const match = color[0] == paletteColor[0] && color[1] == paletteColor[1] && color[2] == paletteColor[2];
+        colorCards.push(<Card 
+            className="m-2"
+            key={paletteColor.join('_')} 
+            style={{ 
+                position: "relative",
+                backgroundColor: `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${match ? 1 : 0.5})`,
+            }}
+        ><CardContent>
+            {(match) ? <IconCheck className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" /> : ''}
+        </CardContent></Card>)
+    })
+
+    return (
+        <div className="grid grid-cols-4 px-4 @xl/main:grid-cols-8">
+            {colorCards}
+        </div>
+    )
 }
 
 export function WPlaceCanvas() {
@@ -112,7 +143,7 @@ export function WPlaceCanvas() {
                             <CardDescription>rgba({target.color[0]}, {target.color[1]}, {target.color[2]}, {target.color[3]})</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div style={{ height: '50px', backgroundColor: `rgba(${target.color[0]}, ${target.color[1]}, ${target.color[2]}, ${target.color[3]})`}}/>
+                            <CardColor color={target.color} />
                         </CardContent>
                     </Card> : ''
                 }
