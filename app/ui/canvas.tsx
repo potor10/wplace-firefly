@@ -1,6 +1,6 @@
-'use client'
+'use client';
 
-import { useState, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Loader2Icon } from "lucide-react";
 import { 
     IconRefresh,
@@ -20,14 +20,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 
+import { converter } from '../lib/converter';
+import { WPLACE_FREE_COLOR_PALETTE } from '../lib/colors';
 import { 
-    WPLACE_FREE_COLOR_PALETTE, 
-    Template, 
+    TemplateOffset,
     getTemplate, 
     computePixelDiff, 
-    createOverlayImage, 
-    converter 
-} from '../lib/template';
+    createOverlayImage
+} from '../lib/api/template';
 
 type PaintTarget = {
     lat: number,
@@ -41,6 +41,10 @@ function CardColor({ color }: { color: number[] }) {
     const colorCards = [];
     WPLACE_FREE_COLOR_PALETTE.forEach(paletteColor => {
         const match = color[0] == paletteColor[0] && color[1] == paletteColor[1] && color[2] == paletteColor[2];
+        let light = false;
+        if (match && paletteColor[0] < 127.5 && paletteColor[1] < 127.5 && paletteColor[2] < 127.5) {
+            light = true;
+        }
         colorCards.push(<Card 
             className="m-2"
             key={paletteColor.join('_')} 
@@ -49,7 +53,7 @@ function CardColor({ color }: { color: number[] }) {
                 backgroundColor: `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${match ? 1 : 0.5})`,
             }}
         ><CardContent>
-            {(match) ? <IconCheck className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" /> : ''}
+            {(match) ? <IconCheck color={(light) ? "white" : "black"} className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" /> : ''}
         </CardContent></Card>)
     })
 
@@ -60,9 +64,16 @@ function CardColor({ color }: { color: number[] }) {
     )
 }
 
-export function WPlaceCanvas() {
+export function WPlaceCanvas({ 
+    templateOffset, 
+    templateName,
+    templateUrl 
+}: { 
+    templateOffset: TemplateOffset, 
+    templateName: string,
+    templateUrl: string
+} ) {
     const [loadingTemplate, setLoadingTemplate] = useState(true);
-    const [template, setTemplate] = useState<Template | undefined>();
     const [overlayImage, setOverlayImage] = useState<Buffer | undefined>();
     const [pixelCount, setPixelCount] = useState([0, 0]);
     const [unpaintedPixels, setUnpaintedPixels] = useState([]);
@@ -70,24 +81,32 @@ export function WPlaceCanvas() {
 
     const setTemplateState = () => {
         setLoadingTemplate(true);
-        getTemplate().then(res => {
-            setTemplate(res);
-            const { pixelDiff, totalPixels } = computePixelDiff(res);
-            setPixelCount([totalPixels - pixelDiff.length, totalPixels]);
-            setUnpaintedPixels(pixelDiff);
-            setOverlayImage(createOverlayImage(res));
-        }).then(() => setLoadingTemplate(false));
+        getTemplate((new URL(templateUrl, window.location.origin)).toString(), templateOffset).then(async template => {
+            Promise.all([
+                new Promise((resolve, _) => {
+                    computePixelDiff(template).then(pixelData => {
+                        Promise.all([
+                            setPixelCount([pixelData.totalPixels - pixelData.pixelDiff.length, pixelData.totalPixels]),
+                            setUnpaintedPixels(pixelData.pixelDiff),
+                        ]).then(resolve);
+                    });
+                }),
+                new Promise((resolve, _) => (createOverlayImage(template).then(overlay => setOverlayImage(overlay)).then(resolve)))
+            ]).then(() => setLoadingTemplate(false));
+        });
     }
 
-    useMemo(() => setTemplateState(), []);
+    useEffect(() => {
+        setOverlayImage(undefined);
+        setPixelCount([0, 0]);
+        setUnpaintedPixels([]);
+        setTarget(undefined);
+        setTemplateState();
+    }, [templateOffset, templateName, templateUrl]);
 
     const getRandomUnpainted = () => {
         const unpaintedPixel = unpaintedPixels[Math.floor(Math.random() * unpaintedPixels.length)];
         let [lat, lon] = converter.pixelsToLatLon(unpaintedPixel[0], unpaintedPixel[1], 11);
-
-        // Small padding to center the pixel
-        lat -= 0.000028;
-        lon += 0.000089;
         const regionPixel = converter.latLonToRegionAndPixel(lat, lon, 11);
         setTarget({ lat, lon, color: unpaintedPixel[2], x: regionPixel.pixel[0], y: regionPixel.pixel[1] })
     }
@@ -96,7 +115,7 @@ export function WPlaceCanvas() {
         <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-1 @5xl/main:grid-cols-2">
             <Card className="shadow-xs">
                 <CardHeader>
-                    <CardTitle>Boxfly Template</CardTitle>
+                    <CardTitle>{templateName} Template</CardTitle>
                     <CardDescription>
                         <Progress value={(pixelCount[0] / pixelCount[1]) * 100} />
                         {pixelCount[0]}/{pixelCount[1]} Pixels Painted
@@ -110,7 +129,7 @@ export function WPlaceCanvas() {
                             }
                         </span>
                         <span className="px-1">
-                            <Button onClick={() => getRandomUnpainted()}><IconClick />Get Pixel</Button>
+                            <Button onClick={() => getRandomUnpainted()} disabled={unpaintedPixels.length ? false : true}><IconClick />Get Pixel</Button>
                         </span>
                     </CardAction>
                 </CardHeader>
@@ -140,7 +159,7 @@ export function WPlaceCanvas() {
                     target ? <Card className="shadow-xs mt-4">
                         <CardHeader>
                             <CardTitle>Pixel Color</CardTitle>
-                            <CardDescription>rgba({target.color[0]}, {target.color[1]}, {target.color[2]}, {target.color[3]})</CardDescription>
+                            <CardDescription>rgb({target.color[0]}, {target.color[1]}, {target.color[2]})</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <CardColor color={target.color} />

@@ -3,6 +3,7 @@ export const TILE_SIZE = 1000;
 
 const EARTH_RADIUS_IN_METERS = 6378137;
 const WORLD_COEFFICENT = Math.PI * EARTH_RADIUS_IN_METERS;
+const PIXEL_CENTER_COEFFICIENT = 0.5;
 
 export class LatLonPixelConverter {
     private tileSize: number;
@@ -35,7 +36,7 @@ export class LatLonPixelConverter {
     }
 
     pixelsToLatLon(px, py, pixelArtZoom) {
-        const [z, F] = this.pixelsToMeters(px, py, pixelArtZoom);
+        const [z, F] = this.pixelsToMeters(px + PIXEL_CENTER_COEFFICIENT, py + PIXEL_CENTER_COEFFICIENT, pixelArtZoom);
         return this.metersToLatLon(z, F);
     }
 
@@ -156,3 +157,6 @@ export class LatLonPixelConverter {
         }
     }
 }
+
+export const converter = new LatLonPixelConverter(TILE_SIZE);
+

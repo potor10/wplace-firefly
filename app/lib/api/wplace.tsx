@@ -1,4 +1,4 @@
-'use server'
+'use server';
 
 export async function getWPlacePng(tx: number, ty: number) {
     const res = await fetch(`https://backend.wplace.live/files/s0/tiles/${tx}/${ty}.png`, {
@@ -11,6 +11,13 @@ export async function getWPlacePng(tx: number, ty: number) {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
         }
     });
+
+    // Tile does exist, send back a custom response of nothing
+    if (res.status === 404) {
+        return undefined;
+    } else if (!res.ok) {
+        throw new Error(JSON.stringify(res));
+    }
 
     const data = await res.arrayBuffer();
     return data;

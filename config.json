@@ -1,0 +1,22 @@
+{
+    "TEMPLATES": {
+        "Boxfly": {
+            "url": "/templates/box.png",
+            "offset": {
+                "tx": 366,
+                "ty": 440,
+                "px": 100,
+                "py": 876
+            }
+        },
+        "SchoolLive": {
+            "url": "/templates/fortnite.png",
+            "offset": {
+                "tx": 365,
+                "ty": 440,
+                "px": 100,
+                "py": 550
+            }
+        }
+    }
+}

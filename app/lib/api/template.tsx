@@ -1,66 +1,40 @@
-'use client';
+'use server';
 
-import { PNG } from 'pngjs/browser';
+import sharp from 'sharp';
 
-import { TILE_SIZE, LatLonPixelConverter } from './converter';
-import { getWPlacePng } from './api/wplace';
+import { TILE_SIZE, converter } from '../converter';
+import { getWPlacePng } from './wplace';
+import { WPLACE_FREE_COLOR_PALETTE } from '../colors';
 
 const PADDING = 10;
 
-export const converter = new LatLonPixelConverter(TILE_SIZE);
-
-async function decodeToPng(buffer: ArrayBuffer): PNG {
-    return await new Promise(async (resolve, reject) =>
-        new PNG({
-            colortype: 6
-        }).parse(buffer, (err, data) =>
-            err ? reject(err) : resolve(data)
-        )
-    );
+type ImageData = {
+    data: Buffer<ArrayBufferLike>,
+    width: number,
+    height: number,
+    channels: number
 }
 
-const WPLACE_FREE_COLOR_PALETTE_HEX = [
-    '#000000',
-    '#3c3c3c',
-    '#787878',
-    '#d2d2d2',
-    '#ffffff',
-    '#600018',
-    '#ed1c24',
-    '#ff7f27',
-    '#f6aa09',
-    '#f9dd3b',
-    '#fffabc',
-    '#0eb968',
-    '#13e67b',
-    '#87ff5e',
-    '#0c816e',
-    '#10aea6',
-    '#13e1be',
-    '#28509e',
-    '#4093e4',
-    '#60f7f2',
-    '#6b50f6',
-    '#99b1fb',
-    '#780c99',
-    '#aa38b9',
-    '#e09ff9',
-    '#cb007a',
-    '#ec1f80',
-    '#f38da9',
-    '#684634',
-    '#95682a',
-    '#f8b277'
-];
+async function decodeImage(buffer: ArrayBuffer): Promise<ImageData> {
+    const { data, info } = await sharp(buffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    return {
+        data,
+        width: info.width,
+        height: info.height,
+        channels: info.channels
+    }
+}
 
-export const WPLACE_FREE_COLOR_PALETTE = WPLACE_FREE_COLOR_PALETTE_HEX.map(hex => {
-    let hexVal = hex.slice(1);
-    return [
-        parseInt(hexVal.substring(0, 2), 16),
-        parseInt(hexVal.substring(2, 4), 16),
-        parseInt(hexVal.substring(4, 6), 16)
-    ]
-});
+async function createEmptyTileBuffer(): Promise<ImageData> {
+    return {
+        data: await sharp({ 
+            create: { width: TILE_SIZE, height: TILE_SIZE, channels: 4, background: { r: 255, g: 255, b: 255, alpha: 0 } }
+        }).raw().toBuffer(),
+        width: TILE_SIZE,
+        height: TILE_SIZE,
+        channels: 4
+    }
+}
 
 function clampToFreeColorPalette(r: number, g: number, b: number) {
     let closest: number;
@@ -77,7 +51,7 @@ function clampToFreeColorPalette(r: number, g: number, b: number) {
     return bestMatch;
 }
 
-export type Config = {
+export type TemplateOffset = {
     px: number,
     py: number,
     tx: number,
@@ -93,42 +67,47 @@ export type Template = {
     offsetPy: number
 }
 
-export async function getTemplate(): Promise<Template> {
-    const templateRes = await fetch('/templates/box/template.png');
-    const templatePng = await decodeToPng(await templateRes.arrayBuffer());
-
-    const configRes = await fetch('/templates/box/config.json');
-    const config = await configRes.json();
+export async function getTemplate(url: string, config: TemplateOffset): Promise<Template> {
+    const templateRes = await fetch(url);
+    const templateImage = await decodeImage(await templateRes.arrayBuffer());
 
     const minPx = config.tx * TILE_SIZE + config.px - PADDING;
     const minPy = config.ty * TILE_SIZE + config.py - PADDING;
-    const maxPx = config.tx * TILE_SIZE + config.px + templatePng.width + PADDING;
-    const maxPy = config.ty * TILE_SIZE + config.py + templatePng.height + PADDING;
+    const maxPx = config.tx * TILE_SIZE + config.px + templateImage.width + PADDING;
+    const maxPy = config.ty * TILE_SIZE + config.py + templateImage.height + PADDING;
 
     const width = maxPx - minPx;
     const height = maxPy - minPy;
 
     const templateData = new Uint8Array(width * height * 4);
 
-    for (let y = 0; y < templatePng.height; y++) {
-        for (let x = 0; x < templatePng.width; x++) {
+    for (let y = 0; y < templateImage.height; y++) {
+        for (let x = 0; x < templateImage.width; x++) {
             // Idx of the pixel from the template
-            let templateIdx = (templatePng.width * y + x) << 2;
+            let templateIdx = (templateImage.width * y + x) << 2;
 
             // Idx to store on the templateBackground data (PADDING add)
             let pixelsIdx = (width * (y + PADDING) + (x + PADDING)) << 2;
             
             const freeColor = clampToFreeColorPalette(
-                templatePng.data[templateIdx], 
-                templatePng.data[templateIdx + 1], 
-                templatePng.data[templateIdx + 2]
+                templateImage.data[templateIdx], 
+                templateImage.data[templateIdx + 1], 
+                templateImage.data[templateIdx + 2]
             );
 
-            templateData[pixelsIdx] = freeColor[0];
-            templateData[pixelsIdx + 1] = freeColor[1];
-            templateData[pixelsIdx + 2] = freeColor[2];
-            // 0 or 255
-            templateData[pixelsIdx + 3] = templatePng.data[templateIdx + 3] && 255; 
+            // Clamp original PNG Data
+            templateImage.data[templateIdx] = freeColor[0];
+            templateImage.data[templateIdx + 1] = freeColor[1];
+            templateImage.data[templateIdx + 2] = freeColor[2];
+            
+            // Either 0 opacity or 255
+            templateImage.data[templateIdx + 3] = templateImage.data[templateIdx + 3] && 255;
+
+            // Update the data (padded)
+            templateData[pixelsIdx] = templateImage.data[templateIdx];
+            templateData[pixelsIdx + 1] = templateImage.data[templateIdx + 1];
+            templateData[pixelsIdx + 2] = templateImage.data[templateIdx + 2];
+            templateData[pixelsIdx + 3] = templateImage.data[templateIdx + 3]; 
         }
     }
 
@@ -140,7 +119,8 @@ export async function getTemplate(): Promise<Template> {
     // Check each tile that could be part of the illustration
     for (let y = minTy; y <= maxTy; y++) {
         for (let x = minTx; x <= maxTx; x++) {
-            const wplaceTile = await decodeToPng(await getWPlacePng(x, y));
+            const wPlaceRes = await getWPlacePng(x, y);
+            const wplaceTile = wPlaceRes ? await decodeImage(wPlaceRes) : await createEmptyTileBuffer();
             const tileMinPx = (x * TILE_SIZE < minPx) ? minPx : x * TILE_SIZE;
             const tileMinPy = (y * TILE_SIZE < minPy) ? minPy : y * TILE_SIZE;
             const tileMaxPx = ((x + 1) * TILE_SIZE > maxPx) ? maxPx : (x + 1) * TILE_SIZE;
@@ -177,13 +157,15 @@ export type PixelData = {
     totalPixels: number
 }
 
-export function computePixelDiff(template: Template) {
+export async function computePixelDiff(template: Template) {
     let totalPixels = 0;
     const pixelDiff = [];
     // Calculate pixel diff (remove padded pixels)
     for (let y = PADDING; y < template.height - PADDING; y++) {
         for (let x = PADDING; x < template.width - PADDING; x++) {
             let templateIdx = (template.width * y + x) << 2;
+
+            const unfilled = template.wplaceData[templateIdx + 3] === 0;
 
             // Don't compare alpha channel because of opacity inconsistencies
             const equal = template.templateData[templateIdx] === template.wplaceData[templateIdx] &&
@@ -194,7 +176,7 @@ export function computePixelDiff(template: Template) {
 
             if (!empty) {
                 totalPixels++;
-                if (!equal) {
+                if (!equal || unfilled) {
                     // Store true X, Y and RGBA data
                     pixelDiff.push([template.offsetPx + x, template.offsetPy + y, [
                         template.templateData[templateIdx],
@@ -213,12 +195,17 @@ const BIG_PIXEL_SIZE = 6;
 const SMALL_PIXEL_SIZE = 3;
 const PIXEL_SPACING = BIG_PIXEL_SIZE - SMALL_PIXEL_SIZE
 
-export function createOverlayImage(template: Template): Buffer {
-    const overlayImage = new PNG({
-        width: template.width * BIG_PIXEL_SIZE,
-        height: template.height * BIG_PIXEL_SIZE,
-        colortype: 6
-    });
+export async function createOverlayImage(template: Template): Promise<Buffer> {
+    const overlayWidth = template.width * BIG_PIXEL_SIZE;
+    const overlayHeight = template.height * BIG_PIXEL_SIZE
+    const overlayImage = await sharp({
+        create: {
+            width: overlayWidth,
+            height: overlayHeight,
+            channels: 4,
+            background: { r: 255, g: 255, b: 255, alpha: 0 }
+        }
+    }).raw().toBuffer();
 
     for (let y = 0; y <= template.height; y++) {
         for (let x = 0; x <= template.width; x++) {
@@ -228,24 +215,26 @@ export function createOverlayImage(template: Template): Buffer {
 
             for (let sizeY = 0; sizeY < BIG_PIXEL_SIZE; sizeY++) {
                 for (let sizeX = 0; sizeX < BIG_PIXEL_SIZE; sizeX++) {
-                    let overlayImageIdx = (overlayImage.width * (y * BIG_PIXEL_SIZE + sizeY) + (x * BIG_PIXEL_SIZE + sizeX)) << 2;
+                    let overlayImageIdx = (overlayWidth * (y * BIG_PIXEL_SIZE + sizeY) + (x * BIG_PIXEL_SIZE + sizeX)) << 2;
 
                     if (!empty && sizeX >= PIXEL_SPACING && sizeY >= PIXEL_SPACING) {
-                        overlayImage.data[overlayImageIdx] = template.templateData[templateIdx];
-                        overlayImage.data[overlayImageIdx + 1] = template.templateData[templateIdx + 1];
-                        overlayImage.data[overlayImageIdx + 2] = template.templateData[templateIdx + 2];
-                        overlayImage.data[overlayImageIdx + 3] = template.templateData[templateIdx + 3];
+                        overlayImage[overlayImageIdx] = template.templateData[templateIdx];
+                        overlayImage[overlayImageIdx + 1] = template.templateData[templateIdx + 1];
+                        overlayImage[overlayImageIdx + 2] = template.templateData[templateIdx + 2];
+                        overlayImage[overlayImageIdx + 3] = template.templateData[templateIdx + 3];
                         continue;
                     }
 
-                    overlayImage.data[overlayImageIdx] = template.wplaceData[templateIdx];
-                    overlayImage.data[overlayImageIdx + 1] = template.wplaceData[templateIdx + 1];
-                    overlayImage.data[overlayImageIdx + 2] = template.wplaceData[templateIdx + 2];
-                    overlayImage.data[overlayImageIdx + 3] = template.wplaceData[templateIdx + 3];
+                    overlayImage[overlayImageIdx] = template.wplaceData[templateIdx];
+                    overlayImage[overlayImageIdx + 1] = template.wplaceData[templateIdx + 1];
+                    overlayImage[overlayImageIdx + 2] = template.wplaceData[templateIdx + 2];
+                    overlayImage[overlayImageIdx + 3] = template.wplaceData[templateIdx + 3];
                 }
             }
         }
     }
 
-    return PNG.sync.write(overlayImage);
+    return await sharp(overlayImage, { 
+        raw: { width: overlayWidth, height: overlayHeight, channels: 4 }
+    }).webp().toBuffer();
 }

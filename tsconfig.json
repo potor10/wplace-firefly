@@ -25,6 +25,9 @@
         "paths": {
             "@/*": [
                 "./@/*"
+            ],
+            "config.json": [
+                "./config.json"
             ]
         }
     },

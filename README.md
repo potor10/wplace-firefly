@@ -2,6 +2,11 @@
 
 Wplace Firefly is a website created to assist users with templating when they may not have templating scripts like [Blue Marble](https://github.com/SwingTheVine/Wplace-BlueMarble) installed.
 
+## License
+
+All source code for Wplace Firefly is MIT Licensed. 
+For the `public/` directory, please refer to the artists for appropriate licensing on each individual asset. 
+
 ## How It Works
 
 Wplace Firefly compares the current state of the canvas against the template. 
@@ -16,7 +21,7 @@ Although using Blue Marble would be faster, Wplace Firefly does not inject any c
 Therefore, usage of Blue Marble is technically more in a grey area regarding Wplace TOS and is tracable if certain checks were to be implemented.
 
 Personally, I would still recommend Blue Marble. 
-If you're planning on placing many pixels, its much faster to have a direct overalay over the canvas.
+If you're planning on placing many pixels, its much faster to have a direct overlay over the canvas.
 
 This project is mostly for individuals who have little knowledge of Wplace.
 It offers them a simple way to contribute to various projects without requiring user-installed tools.
@@ -27,6 +32,19 @@ It offers them a simple way to contribute to various projects without requiring 
 
 `npm run dev`
 
+## Examples
+
+### Main UI
+![Main UI](/public/help/help_1.png)
+
+### Selected Template
+![Selected Template](/public/help/help_2.png)
+
+### Color Guide
+![Color Guide](/public/help/help_3.png)
+
+### Custom Templates
+![Custom Templates](/public/help/help_4.png)
 
 
 
