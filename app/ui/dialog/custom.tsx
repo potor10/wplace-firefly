@@ -81,7 +81,7 @@ export function CustomDialog({
                 </DialogHeader>
                 <div className="grid gap-4">
                     <div className="grid gap-3">
-                        <Label htmlFor="template-url">Url (Must Be Transparent PNG)</Label>
+                        <Label htmlFor="template-url">Url (Supports PNG, WebP, JPEG)</Label>
                         <Input id="template-url" name="template-url" value={customConfig.url} onChange={(event) => setCustomConfig({
                             ...customConfig,
                             url: event.target.value

@@ -1,6 +1,7 @@
 'use server';
 
 import sharp from 'sharp';
+import shuffle from 'knuth-shuffle-seeded';
 
 import { TILE_SIZE, converter } from '../converter';
 import { getWPlacePng } from './wplace';
@@ -152,14 +153,23 @@ export async function getTemplate(url: string, config: TemplateOffset): Promise<
     };
 }
 
-export type PixelData = {
-    pixelDiff: number[][]
-    totalPixels: number
+export type PixelDiff = {
+    [color: string]: {
+        px: number,
+        py: number
+    }[]
 }
 
-export async function computePixelDiff(template: Template) {
+export type PixelData = {
+    pixelDiff: PixelDiff
+    totalPixels: number
+    diffPixels: number
+}
+
+export async function computePixelDiff(template: Template): Promise<PixelData> {
     let totalPixels = 0;
-    const pixelDiff = [];
+    let diffPixels = 0;
+    const pixelDiff = {};
     // Calculate pixel diff (remove padded pixels)
     for (let y = PADDING; y < template.height - PADDING; y++) {
         for (let x = PADDING; x < template.width - PADDING; x++) {
@@ -178,17 +188,23 @@ export async function computePixelDiff(template: Template) {
                 totalPixels++;
                 if (!equal || unfilled) {
                     // Store true X, Y and RGBA data
-                    pixelDiff.push([template.offsetPx + x, template.offsetPy + y, [
-                        template.templateData[templateIdx],
-                        template.templateData[templateIdx + 1],
-                        template.templateData[templateIdx + 2],
-                        template.templateData[templateIdx + 3]
-                    ]]);
+                    const colorKey = `${template.templateData[templateIdx]}_${template.templateData[templateIdx + 1]}_${template.templateData[templateIdx + 2]}`;
+                    if (!(colorKey in pixelDiff)) {
+                        pixelDiff[colorKey] = [];
+                    }
+                    pixelDiff[colorKey].push({
+                        px: template.offsetPx + x,
+                        py: template.offsetPy + y
+                    });
+                    diffPixels++;
                 }
             }
         }
     }
-    return { pixelDiff, totalPixels };
+
+    // Randomize array
+    Object.keys(pixelDiff).forEach(key => pixelDiff[key] = shuffle(pixelDiff[key]));
+    return { pixelDiff, totalPixels, diffPixels };
 }
 
 const BIG_PIXEL_SIZE = 6;

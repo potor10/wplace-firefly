@@ -39,9 +39,7 @@ export function HelpDialog({
                             <Separator className="mb-6" />
                             <h4>Step 2: Preview The Pixel Artwork</h4>
                             <p className="text-muted-foreground text-sm">
-                                You can now preview the pixel artwork and see what pixels are not yet placed. <br/>
-                                Clicking the "Get Pixel" button will get you a random unfilled pixel. <br/>
-                                The example artwork is mostly finished, but in an unfinished artwork template pixels will appear smaller.
+                                You can now preview the pixel artwork and see what pixels are not yet placed. 
                             </p>
                         </span>
                         <img src="/help/help_2.png" />
@@ -49,7 +47,8 @@ export function HelpDialog({
                             <Separator className="mb-6" />
                             <h4>Step 3: Fill The Unfilled Pixel</h4>
                             <p className="text-muted-foreground text-sm">
-                                Use the provided color guide and pixel coordinates to fill the unfilled pixel!
+                                Use the provided color guide and a select a color to fill in! <br/>
+                                Once a color is selected, the visit pixel button should appear. This button will bring you to a random pixel that needs to be filled with your selected color.
                             </p>
                         </span>
                         <img src="/help/help_3.png" />

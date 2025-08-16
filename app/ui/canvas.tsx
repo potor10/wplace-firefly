@@ -24,6 +24,7 @@ import { converter } from '../lib/converter';
 import { WPLACE_FREE_COLOR_PALETTE } from '../lib/colors';
 import { 
     TemplateOffset,
+    PixelDiff,
     getTemplate, 
     computePixelDiff, 
     createOverlayImage
@@ -37,17 +38,30 @@ type PaintTarget = {
     y: number
 }
 
-function CardColor({ color }: { color: number[] }) {
+function CardColor({ 
+    unpaintedPixels, 
+    color, 
+    setColor 
+}: { 
+    unpaintedPixels: PixelDiff,
+    color: number[],
+    setColor: (color: number[]) => void
+}) {
     const colorCards = [];
     WPLACE_FREE_COLOR_PALETTE.forEach(paletteColor => {
-        const match = color[0] == paletteColor[0] && color[1] == paletteColor[1] && color[2] == paletteColor[2];
+        const colorKey = paletteColor.join('_');
+        if (!(colorKey in unpaintedPixels)) {
+            return;
+        }
+        const match = (color) ? color[0] == paletteColor[0] && color[1] == paletteColor[1] && color[2] == paletteColor[2] : false;
         let light = false;
         if (match && paletteColor[0] < 127.5 && paletteColor[1] < 127.5 && paletteColor[2] < 127.5) {
             light = true;
         }
         colorCards.push(<Card 
+            onClick={() => setColor(paletteColor)}
             className="m-2"
-            key={paletteColor.join('_')} 
+            key={colorKey} 
             style={{ 
                 position: "relative",
                 backgroundColor: `rgba(${paletteColor[0]}, ${paletteColor[1]}, ${paletteColor[2]}, ${match ? 1 : 0.5})`,
@@ -76,7 +90,8 @@ export function WPlaceCanvas({
     const [loadingTemplate, setLoadingTemplate] = useState(true);
     const [overlayImage, setOverlayImage] = useState<Buffer | undefined>();
     const [pixelCount, setPixelCount] = useState([0, 0]);
-    const [unpaintedPixels, setUnpaintedPixels] = useState([]);
+    const [unpaintedPixels, setUnpaintedPixels] = useState<PixelDiff>({});
+    const [color, setColor] = useState<number[] | undefined>();
     const [target, setTarget] = useState<PaintTarget | undefined>(undefined);
 
     const setTemplateState = () => {
@@ -86,7 +101,7 @@ export function WPlaceCanvas({
                 new Promise((resolve, _) => {
                     computePixelDiff(template).then(pixelData => {
                         Promise.all([
-                            setPixelCount([pixelData.totalPixels - pixelData.pixelDiff.length, pixelData.totalPixels]),
+                            setPixelCount([pixelData.totalPixels - pixelData.diffPixels, pixelData.totalPixels]),
                             setUnpaintedPixels(pixelData.pixelDiff),
                         ]).then(resolve);
                     });
@@ -99,16 +114,26 @@ export function WPlaceCanvas({
     useEffect(() => {
         setOverlayImage(undefined);
         setPixelCount([0, 0]);
-        setUnpaintedPixels([]);
+        setUnpaintedPixels({});
+        setColor(undefined);
         setTarget(undefined);
         setTemplateState();
     }, [templateOffset, templateName, templateUrl]);
 
     const getRandomUnpainted = () => {
-        const unpaintedPixel = unpaintedPixels[Math.floor(Math.random() * unpaintedPixels.length)];
-        let [lat, lon] = converter.pixelsToLatLon(unpaintedPixel[0], unpaintedPixel[1], 11);
+        const colorKey = color.join('_');
+        const unpaintedPixel = unpaintedPixels[colorKey].pop();
+        let [lat, lon] = converter.pixelsToLatLon(unpaintedPixel.px, unpaintedPixel.py, 11);
         const regionPixel = converter.latLonToRegionAndPixel(lat, lon, 11);
-        setTarget({ lat, lon, color: unpaintedPixel[2], x: regionPixel.pixel[0], y: regionPixel.pixel[1] })
+        window.open(`https://wplace.live/?lat=${lat}&lng=${lon}&zoom=22`, '_blank').focus();
+        setTarget({ lat, lon, color: unpaintedPixel[2], x: regionPixel.pixel[0], y: regionPixel.pixel[1] });
+
+        // Remove this pixel from the unpainted pixels so it doesn't show up again
+        if (!unpaintedPixels[colorKey].length) {
+            delete unpaintedPixels[colorKey];
+            setColor(undefined);
+        }
+        setUnpaintedPixels(unpaintedPixels);
     }
 
     return (
@@ -128,9 +153,6 @@ export function WPlaceCanvas({
                                     <Button variant="ghost" onClick={() => setTemplateState()}><IconRefresh /></Button>
                             }
                         </span>
-                        <span className="px-1">
-                            <Button onClick={() => getRandomUnpainted()} disabled={unpaintedPixels.length ? false : true}><IconClick />Get Pixel</Button>
-                        </span>
                     </CardAction>
                 </CardHeader>
                 <CardContent>
@@ -145,27 +167,25 @@ export function WPlaceCanvas({
                 <Card className="from-primary/5 to-card bg-card bg-gradient-to-t shadow-xs">
                     <CardHeader>
                         <CardTitle>{ target ? `Pixel (${target.x}, ${target.y})` : "Pixel Details" }</CardTitle>
-                        <CardDescription>Click "Get Pixel" to get a random unpainted pixel!</CardDescription>
+                        <CardDescription>Visit a random unpainted pixel!</CardDescription>
                         {
-                            target ? <CardAction>
+                            color ? <CardAction>
                                 <Button
-                                    onClick={() => window.open(`https://wplace.live/?lat=${target.lat}&lng=${target.lon}&zoom=22`, '_blank').focus()}
+                                    onClick={getRandomUnpainted}
                                 ><IconSend />Visit Pixel</Button>
                             </CardAction> : ''
                         }
                     </CardHeader>
                 </Card>
-                {
-                    target ? <Card className="shadow-xs mt-4">
-                        <CardHeader>
-                            <CardTitle>Pixel Color</CardTitle>
-                            <CardDescription>rgb({target.color[0]}, {target.color[1]}, {target.color[2]})</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <CardColor color={target.color} />
-                        </CardContent>
-                    </Card> : ''
-                }
+                <Card className="shadow-xs mt-4">
+                    <CardHeader>
+                        <CardTitle>Color Picker</CardTitle>
+                        <CardDescription>{ color ? `rgb(${color[0]}, ${color[1]}, ${color[2]})` : 'Select a color!' }</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <CardColor unpaintedPixels={unpaintedPixels} color={color} setColor={setColor} />
+                    </CardContent>
+                </Card>
             </span>
         </div>
     )

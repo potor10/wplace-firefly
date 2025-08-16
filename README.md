@@ -40,8 +40,8 @@ It offers them a simple way to contribute to various projects without requiring 
 ### Selected Template
 ![Selected Template](/public/help/help_2.png)
 
-### Color Guide
-![Color Guide](/public/help/help_3.png)
+### Color Picker
+![Color Picker](/public/help/help_3.png)
 
 ### Custom Templates
 ![Custom Templates](/public/help/help_4.png)
