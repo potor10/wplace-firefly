@@ -1,5 +1,14 @@
 {
     "TEMPLATES": {
+        "Ado": {
+            "url": "/templates/ado_250_partial.png",
+            "offset": {
+                "tx": 1820,
+                "ty": 806,
+                "px": 11,
+                "py": 711
+            }
+        },
         "Boxfly": {
             "url": "/templates/box.png",
             "offset": {
